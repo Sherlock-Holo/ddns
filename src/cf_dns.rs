@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::env;
-use std::fmt::{self, Debug, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 use std::iter::FromIterator;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -14,14 +14,18 @@ use cloudflare::endpoints::zone::{ListZones, ListZonesParams, Zone};
 use cloudflare::framework::async_api::{ApiClient, Client};
 use cloudflare::framework::auth::Credentials;
 use cloudflare::framework::{Environment, HttpApiClientConfig};
-use futures_util::stream::FuturesUnordered;
-use futures_util::TryStreamExt;
-use tracing::{info, instrument};
+use tracing::{error, info, info_span, instrument, Instrument};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum RecordKind {
     A,
     AAAA,
+}
+
+impl Display for RecordKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Debug::fmt(self, f)
+    }
 }
 
 #[derive(Clone)]
@@ -52,7 +56,7 @@ impl CfDns {
         })
     }
 
-    #[instrument]
+    #[instrument(err)]
     pub async fn get_dns_record(
         &self,
         name: &str,
@@ -61,10 +65,16 @@ impl CfDns {
     ) -> Result<Vec<IpAddr>> {
         let zone_id = self.get_zone_id(zone).await?;
 
-        self.get_dns_record_with_zone_id(name, &zone_id, kind).await
+        let ip_list = self
+            .get_dns_record_with_zone_id(name, &zone_id, kind)
+            .await?;
+
+        info!(name, zone, %zone_id, %kind, ?ip_list, "get dns records success");
+
+        Ok(ip_list)
     }
 
-    #[instrument]
+    #[instrument(err)]
     pub async fn set_dns_record(
         &self,
         name: &str,
@@ -80,7 +90,7 @@ impl CfDns {
         );
 
         if !ip_list.iter().any(|ip| !exist_dns_records.contains(ip)) {
-            info!(domain = name, ?ip_list, "no need update");
+            info!(name, zone, %zone_id, %kind, ?ip_list, "no need update");
 
             return Ok(());
         }
@@ -88,7 +98,7 @@ impl CfDns {
         self.remove_dns_record_with_zone_id(name, &zone_id, kind)
             .await?;
 
-        let futs = FuturesUnordered::new();
+        info!(name, zone, %zone_id, %kind, ?ip_list, "remove old dns record success");
 
         for ip in ip_list {
             let create_dns_req = match ip {
@@ -115,30 +125,43 @@ impl CfDns {
                 },
             };
 
-            futs.push(async move {
-                let create_dns_resp = self.client.request(&create_dns_req).await?;
-                if let Some(api_err) = create_dns_resp.errors.first() {
-                    return Err(anyhow::anyhow!("{}", api_err));
-                }
+            let create_dns_resp = self
+                .client
+                .request(&create_dns_req)
+                .instrument(info_span!("create_dns_record"))
+                .await
+                .map_err(|err| {
+                    error!(name, zone, %zone_id, %kind, %ip, %err, "create dns record failed");
 
-                Ok(())
-            })
+                    err
+                })?;
+            if let Some(api_err) = create_dns_resp.errors.first() {
+                return Err(anyhow::anyhow!("{}", api_err));
+            }
+
+            info!(?create_dns_req, "create dns record success");
         }
 
-        futs.try_collect::<Vec<_>>().await?;
+        info!(name, zone, %zone_id, %kind, ?ip_list, "set dns record success");
 
         Ok(())
     }
 
-    #[instrument]
+    #[instrument(err)]
     pub async fn remove_dns_records(&self, name: &str, zone: &str, kind: RecordKind) -> Result<()> {
         let zone_id = self.get_zone_id(zone).await?;
 
+        info!(name, zone, "zone id is {}", zone_id);
+
         self.remove_dns_record_with_zone_id(name, &zone_id, kind)
-            .await
+            .await?;
+
+        info!(name, zone, %zone_id, %kind, "remove dns record success");
+
+        Ok(())
     }
 
-    #[instrument]
+    #[instrument(err)]
     async fn remove_dns_record_with_zone_id(
         &self,
         name: &str,
@@ -180,10 +203,12 @@ impl CfDns {
             }
         }
 
+        info!(name, zone_id, "remove dns record success");
+
         Ok(())
     }
 
-    #[instrument]
+    #[instrument(err)]
     async fn get_zone_id(&self, zone: &str) -> Result<String> {
         let list_zones_req = ListZones {
             params: ListZonesParams {
@@ -210,7 +235,7 @@ impl CfDns {
             .ok_or_else(|| anyhow::anyhow!("zone {} is not exist", zone))
     }
 
-    #[instrument]
+    #[instrument(err)]
     async fn get_dns_record_with_zone_id(
         &self,
         name: &str,
@@ -236,7 +261,8 @@ impl CfDns {
         }
 
         let list_dns_resp: Vec<DnsRecord> = list_dns_resp.result;
-        Ok(list_dns_resp
+
+        let ip_list = list_dns_resp
             .into_iter()
             .filter_map(|dns_record| {
                 if dns_record.name == name {
@@ -262,7 +288,11 @@ impl CfDns {
                     None
                 }
             })
-            .collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+
+        info!(name, zone_id, %kind, ?ip_list, "get dns records success");
+
+        Ok(ip_list)
     }
 }
 
@@ -289,10 +319,20 @@ fn create_credentials_from_token() -> Option<Credentials> {
 
 #[cfg(test)]
 mod tests {
+    use once_cell::sync::OnceCell;
+
     use super::*;
+
+    static TRACING_INIT: OnceCell<()> = OnceCell::new();
+
+    fn init_tracing() {
+        TRACING_INIT.get_or_init(|| crate::trace::init_tracing().unwrap());
+    }
 
     #[tokio::test]
     async fn get_dns_record() {
+        init_tracing();
+
         let cf_dns = CfDns::new().await.unwrap();
 
         let zone = env::var("TEST_ZONE").unwrap();
@@ -308,6 +348,8 @@ mod tests {
 
     #[tokio::test]
     async fn set_dns_record() {
+        init_tracing();
+
         let cf_dns = CfDns::new().await.unwrap();
 
         let zone = env::var("TEST_ZONE").unwrap();
@@ -337,6 +379,8 @@ mod tests {
 
     #[tokio::test]
     async fn remove_dns_record() {
+        init_tracing();
+
         let cf_dns = CfDns::new().await.unwrap();
 
         let zone = env::var("TEST_ZONE").unwrap();

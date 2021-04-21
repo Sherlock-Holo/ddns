@@ -63,7 +63,7 @@ impl From<String> for PatchFinalizers {
     }
 }
 
-#[instrument(skip(ctx))]
+#[instrument(err, skip(ctx))]
 pub async fn reconcile(ddns: Ddns, ctx: Context<ContextData>) -> Result<ReconcilerAction, Error> {
     if ddns.metadata.deletion_timestamp.is_some() {
         return handle_delete(ddns, ctx).await;
@@ -81,7 +81,7 @@ pub fn reconcile_failed(err: &Error, _ctx: Context<ContextData>) -> ReconcilerAc
     }
 }
 
-#[instrument(skip(ctx))]
+#[instrument(err, skip(ctx))]
 async fn handle_delete(ddns: Ddns, ctx: Context<ContextData>) -> Result<ReconcilerAction, Error> {
     let ContextData {
         client: client_ref,
@@ -100,6 +100,8 @@ async fn handle_delete(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcil
     let spec: DdnsSpec = ddns.spec;
     let finalizers = metadata.finalizers;
 
+    info!(%name, ?status, ?spec, ?finalizers, "handle delete");
+
     let patch_params = PatchParams::default();
 
     let mut status = if let Some(mut status) = status {
@@ -117,21 +119,34 @@ async fn handle_delete(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcil
 
     let ddns_api: Api<Ddns> = Api::namespaced(client_ref.clone(), &namespace);
 
-    ddns_api
+    match ddns_api
         .patch_status(
             &name,
             &patch_params,
             &Patch::Merge(status.to_patch_status()),
         )
-        .await?;
+        .await
+    {
+        Err(kube::Error::Api(err)) if err.code == 404 => {
+            info!(%name, ?status, ?finalizers, "resource has been deleted");
 
-    info!(%name, ?status, "update status to DELETING");
+            return Ok(ReconcilerAction {
+                requeue_after: None,
+            });
+        }
+
+        Err(err) => return Err(err.into()),
+
+        Ok(_) => {}
+    }
+
+    info!(%name, ?status, ?finalizers, "updated status to DELETING");
 
     cf_dns
         .remove_dns_records(&status.domain_name, &status.domain, RecordKind::A)
         .await?;
 
-    info!(%name, ?status, "remove dns records success");
+    info!(%name, ?status, ?finalizers, "remove dns records success");
 
     status.status = "DELETED".to_string();
 
@@ -143,7 +158,7 @@ async fn handle_delete(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcil
         )
         .await?;
 
-    info!(%name, ?status, "update status to DELETED");
+    info!(%name, ?status, "updated status to DELETED");
 
     if let Some(mut finalizers) = finalizers {
         if let Some(index) = finalizers
@@ -164,14 +179,14 @@ async fn handle_delete(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcil
         }
     }
 
-    info!(%name, ?status,"delete Ddns success");
+    info!(%name, ?status, "delete Ddns success");
 
     Ok(ReconcilerAction {
         requeue_after: None,
     })
 }
 
-#[instrument(skip(ddns, ctx))]
+#[instrument(err, skip(ddns, ctx))]
 async fn handle_apply(ddns: Ddns, ctx: Context<ContextData>) -> Result<ReconcilerAction, Error> {
     let ContextData {
         client: client_ref,
@@ -189,11 +204,13 @@ async fn handle_apply(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcile
     let status: Option<DdnsStatus> = ddns.status;
     let spec: DdnsSpec = ddns.spec;
 
+    info!(%name, ?status, ?spec, "handle apply");
+
     let mut status = status.unwrap_or_default();
 
     if status.domain_name != spec.domain_name {
         cf_dns
-            .remove_dns_records(&status.domain_name, &status.domain, RecordKind::A)
+            .remove_dns_records(&spec.domain_name, &spec.domain, RecordKind::A)
             .await?;
 
         info!(%name, ?spec, ?status, "remove old dns records");
@@ -266,7 +283,7 @@ async fn handle_apply(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcile
     }
 
     cf_dns
-        .set_dns_record(&spec.service_name, &spec.domain, RecordKind::A, &lb_ips)
+        .set_dns_record(&spec.domain_name, &spec.domain, RecordKind::A, &lb_ips)
         .await?;
 
     info!(%name, ?spec, ?status, "set dns record success");
@@ -297,6 +314,7 @@ async fn handle_apply(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcile
     status.status = "RUNNING".to_string();
     status.service_name = spec.service_name;
     status.domain_name = spec.domain_name;
+    status.domain = spec.domain;
 
     ddns_api
         .patch_status(
