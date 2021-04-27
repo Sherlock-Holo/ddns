@@ -183,6 +183,6 @@ spec:
               value: info
 
       #            - name: JAEGER_AGENT
-      #              value: jaeger
+      #              value: jaeger:6831
 
       serviceAccountName: ddns-controller
