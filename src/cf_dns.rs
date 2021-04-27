@@ -222,9 +222,14 @@ impl CfDns {
             },
         };
 
-        let list_zones_resp = self.client.request(&list_zones_req).await?;
+        let list_zones_resp = self.client.request(&list_zones_req).await.map_err(|err| {
+            error!(%err, get_zone_request = ?list_zones_req, "send get zone id request failed");
+
+            err
+        })?;
+
         if let Some(api_err) = list_zones_resp.errors.first() {
-            return Err(anyhow::anyhow!("{}", api_err));
+            return Err(anyhow::anyhow!("api error {}", api_err));
         }
 
         let list_zones_resp: Vec<Zone> = list_zones_resp.result;
@@ -319,14 +324,14 @@ fn create_credentials_from_token() -> Option<Credentials> {
 
 #[cfg(test)]
 mod tests {
-    use once_cell::sync::OnceCell;
+    use std::sync::Once;
 
     use super::*;
 
-    static TRACING_INIT: OnceCell<()> = OnceCell::new();
-
     fn init_tracing() {
-        TRACING_INIT.get_or_init(|| crate::trace::init_tracing().unwrap());
+        static TRACING_INIT: Once = Once::new();
+
+        TRACING_INIT.call_once(|| crate::trace::init_tracing().unwrap());
     }
 
     #[tokio::test]

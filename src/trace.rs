@@ -15,7 +15,7 @@ pub fn init_tracing() -> Result<()> {
         .with_agent_endpoint(agent_addr)
         .install_simple()?;
 
-    let stderr_subscriber = tracing_subscriber::fmt::layer().json().with_target(true);
+    let stderr_subscriber = tracing_subscriber::fmt::layer().pretty().with_target(true);
     let env_filter = tracing_subscriber::filter::EnvFilter::from_default_env();
 
     let trace = tracing_opentelemetry::layer().with_tracer(tracer);

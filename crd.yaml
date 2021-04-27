@@ -80,3 +80,123 @@ spec:
         - jsonPath: .status.status
           name: Status
           type: string
+
+---
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ddns-system
+
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ddns-controller
+  namespace: ddns-system
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ddns-role
+
+rules:
+  - verbs:
+      - get
+      - watch
+      - list
+
+    apiGroups: [ "" ]
+
+    resources:
+      - services
+
+  - verbs:
+      - '*'
+
+    apiGroups:
+      - '*'
+
+    resources:
+      - ddnss
+
+  - verbs:
+      - '*'
+
+    apiGroups:
+      - '*'
+
+    resources:
+      - ddnss/status
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ddns-role-bind
+
+subjects:
+  - kind: ServiceAccount
+    name: ddns-controller
+    namespace: ddns-system
+
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ddns-role
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ddns-secret
+  namespace: ddns-system
+
+data:
+  token: YOUR-BASE64-TOKEN
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: ddns-system
+  name: ddns-controller
+  labels:
+    app: ddns-controller
+
+spec:
+  selector:
+    matchLabels:
+      app: ddns-controller
+
+  template:
+    metadata:
+      labels:
+        app: ddns-controller
+
+    spec:
+      containers:
+        - name: ddns-controller
+          image: sherlockholo/ddns:latest
+
+          resources:
+            limits:
+              memory: 256Mi
+
+          env:
+            - name: CF_DNS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: ddns-secret
+                  key: token
+
+            - name: RUST_LOG
+              value: info
+
+      serviceAccountName: ddns-controller
