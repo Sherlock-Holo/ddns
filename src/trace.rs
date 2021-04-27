@@ -8,7 +8,7 @@ use tracing_subscriber::Registry;
 pub fn init_tracing() -> Result<()> {
     global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
 
-    let agent_addr = env::var("JAEGER_AGENT_ADDR").unwrap_or_else(|_| "127.0.0.1:6831".to_string());
+    let agent_addr = env::var("JAEGER_AGENT").unwrap_or_else(|_| "127.0.0.1:6831".to_string());
 
     let tracer = opentelemetry_jaeger::new_pipeline()
         .with_service_name("ddns")

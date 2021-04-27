@@ -1,0 +1,10 @@
+apiVersion: "api.sherlockholo.xyz/v1"
+kind: Ddns
+metadata:
+  name: example
+
+spec:
+  selector:
+    app: example
+  domain: example.example.com
+  zone: example.com

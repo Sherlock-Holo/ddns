@@ -1,8 +1,10 @@
-use std::net::{AddrParseError, IpAddr};
+use std::collections::HashMap;
+use std::net::IpAddr;
 use std::time::Duration;
 
+use futures_util::{stream, StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Service;
-use kube::api::{ObjectMeta, Patch, PatchParams};
+use kube::api::{ListParams, ObjectMeta, Patch, PatchParams};
 use kube::{Api, Client};
 use kube_runtime::controller::{Context, ReconcilerAction};
 use serde::Serialize;
@@ -111,9 +113,9 @@ async fn handle_delete(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcil
     } else {
         DdnsStatus {
             status: "DELETING".to_string(),
-            service_name: spec.service_name,
-            domain_name: spec.domain_name,
+            selector: spec.selector,
             domain: spec.domain,
+            zone: spec.zone,
         }
     };
 
@@ -143,7 +145,7 @@ async fn handle_delete(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcil
     info!(%name, ?status, ?finalizers, "updated status to DELETING");
 
     cf_dns
-        .remove_dns_records(&status.domain_name, &status.domain, RecordKind::A)
+        .remove_dns_records(&status.domain, &status.zone, RecordKind::A)
         .await?;
 
     info!(%name, ?status, ?finalizers, "remove dns records success");
@@ -208,9 +210,9 @@ async fn handle_apply(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcile
 
     let mut status = status.unwrap_or_default();
 
-    if status.domain_name != spec.domain_name {
+    if status.domain != spec.domain {
         cf_dns
-            .remove_dns_records(&spec.domain_name, &spec.domain, RecordKind::A)
+            .remove_dns_records(&spec.domain, &spec.zone, RecordKind::A)
             .await?;
 
         info!(%name, ?spec, ?status, "remove old dns records");
@@ -219,60 +221,7 @@ async fn handle_apply(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcile
     let ddns_api: Api<Ddns> = Api::namespaced(client_ref.clone(), &namespace);
     let service_api: Api<Service> = Api::namespaced(client_ref.clone(), &namespace);
 
-    let service = match service_api.get(&spec.service_name).await {
-        Err(kube::Error::Api(err)) if err.code == 404 => {
-            return Ok(ReconcilerAction {
-                requeue_after: Some(Duration::from_secs(3)),
-            });
-        }
-
-        Err(err) => return Err(err.into()),
-        Ok(service) => service,
-    };
-
-    let service_status = service.status.ok_or_else(|| {
-        error!(%name, ?spec, ?status, "service has no status");
-
-        anyhow::anyhow!("service {} doesn't have status", spec.service_name)
-    })?;
-
-    let lb_status = service_status.load_balancer.ok_or_else(|| {
-        error!(%name, ?spec, ?status, "service is not load balancer service");
-
-        anyhow::anyhow!("service {} is not load balancer service", spec.service_name)
-    })?;
-
-    let lb_ingress_list = if let Some(lb_ingress_list) = lb_status.ingress {
-        lb_ingress_list
-    } else {
-        warn!(%name, ?spec, ?status, "service load balancer has no ingress info");
-
-        return Ok(ReconcilerAction {
-            requeue_after: Some(Duration::from_secs(3)),
-        });
-    };
-
-    let lb_ips = lb_ingress_list
-        .into_iter()
-        .filter_map(|lb_ingress| {
-            lb_ingress.ip.map(|ip| {
-                ip.parse()
-                    .map_err(|err: AddrParseError| {
-                        warn!(
-                            %name,
-                            ?spec,
-                            ?status,
-                            %ip,
-                            ?err,
-                            "parse ip from str failed"
-                        );
-
-                        err
-                    })
-                    .ok()
-            })?
-        })
-        .collect::<Vec<IpAddr>>();
+    let lb_ips = get_service_lb_ips(&service_api, &spec.selector).await?;
 
     if lb_ips.is_empty() {
         warn!(%name, ?spec, ?status, "load balancer has no ip");
@@ -282,11 +231,25 @@ async fn handle_apply(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcile
         });
     }
 
+    info!(
+        %name,
+        ?spec,
+        ?status,
+        load_balancer_ip_list=?lb_ips,
+        "get service load balancer ip list success"
+    );
+
     cf_dns
-        .set_dns_record(&spec.domain_name, &spec.domain, RecordKind::A, &lb_ips)
+        .set_dns_record(&spec.domain, &spec.zone, RecordKind::A, &lb_ips)
         .await?;
 
-    info!(%name, ?spec, ?status, "set dns record success");
+    info!(
+        %name,
+        ?spec,
+        ?status,
+        load_balancer_ip_list=?lb_ips,
+        "set dns record success"
+    );
 
     let finalizer_patch = match metadata.finalizers {
         None => Some(PatchFinalizers::from(FINALIZER.to_string())),
@@ -308,13 +271,19 @@ async fn handle_apply(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcile
             )
             .await?;
 
-        info!(%name, ?spec, ?status, "set finalizer success");
+        info!(
+            %name,
+            ?spec,
+            ?status,
+            load_balancer_ip_list=?lb_ips,
+            "set finalizer success"
+        );
     }
 
     status.status = "RUNNING".to_string();
-    status.service_name = spec.service_name;
-    status.domain_name = spec.domain_name;
+    status.selector = spec.selector;
     status.domain = spec.domain;
+    status.zone = spec.zone;
 
     ddns_api
         .patch_status(
@@ -324,9 +293,51 @@ async fn handle_apply(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcile
         )
         .await?;
 
-    info!(%name, ?status, "update status success");
+    info!(
+        %name,
+        ?status,
+        load_balancer_ip_list=?lb_ips,
+        "update status success"
+    );
 
     Ok(ReconcilerAction {
         requeue_after: Some(Duration::from_secs(30)),
     })
+}
+
+#[instrument(err, skip(service_api))]
+async fn get_service_lb_ips(
+    service_api: &Api<Service>,
+    selector: &HashMap<String, String>,
+) -> Result<Vec<IpAddr>, Error> {
+    stream::iter(selector.iter())
+        .then(|(key, value)| async move {
+            let list_params = ListParams::default().labels(&format!("{}={}", key, value));
+
+            let svc_list = service_api.list(&list_params).await.map_err(|err| {
+                error!(selector_key=%key, selector_value=%value, "list service failed");
+
+                err
+            })?;
+
+            Ok::<_, Error>(svc_list.items)
+        })
+        .try_fold(vec![], |mut svc_ips, svc_list| async move {
+            let mut svc_status_list = svc_list
+                .into_iter()
+                .filter_map(|svc| {
+                    svc.status
+                        .and_then(|status| status.load_balancer)
+                        .and_then(|lb| lb.ingress)
+                })
+                .flatten()
+                .flat_map(|ingress| ingress.ip)
+                .map(|ip| ip.parse().map_err(|err| anyhow::Error::from(err).into()))
+                .collect::<Result<Vec<_>, Error>>()?;
+
+            svc_ips.append(&mut svc_status_list);
+
+            Ok(svc_ips)
+        })
+        .await
 }

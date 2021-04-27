@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use kube::CustomResource;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -12,25 +14,24 @@ use serde::{Deserialize, Serialize};
     status = "DdnsStatus",
     namespaced,
     derive = "Default",
-    printcolumn = r#"{"name":"SERVICENAME", "type":"string", "jsonPath":".spec.serviceName"}"#,
-    printcolumn = r#"{"name":"DOMAINNAME", "type":"string", "jsonPath":".spec.domainName"}"#,
+    printcolumn = r#"{"name":"DOMAIN", "type":"string", "jsonPath":".spec.domain"}"#,
     printcolumn = r#"{"name":"AGE", "type":"date", "jsonPath":".metadata.creationTimestamp"}"#,
     printcolumn = r#"{"name":"STATUS", "type":"string", "jsonPath":".status.status"}"#
 )]
 #[serde(rename_all = "camelCase")]
 pub struct DdnsSpec {
-    pub service_name: String,
-    pub domain_name: String,
+    pub selector: HashMap<String, String>,
     pub domain: String,
+    pub zone: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone, JsonSchema, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct DdnsStatus {
     pub status: String,
-    pub service_name: String,
-    pub domain_name: String,
+    pub selector: HashMap<String, String>,
     pub domain: String,
+    pub zone: String,
 }
 
 impl DdnsStatus {

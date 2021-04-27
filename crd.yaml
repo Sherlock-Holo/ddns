@@ -23,28 +23,26 @@ spec:
             spec:
               type: object
               properties:
-                serviceName:
-                  type: string
-                  nullable: false
-
-                domainName:
-                  type: string
-                  nullable: false
-
                 domain:
                   type: string
                   nullable: false
 
+                zone:
+                  type: string
+                  nullable: false
+
+                selector:
+                  x-kubernetes-preserve-unknown-fields: true
+                  type: object
+
               allOf:
                 - properties:
-                    serviceName: { }
-                    domainName: { }
                     domain: { }
+                    zone: { }
 
                   required:
-                    - "serviceName"
-                    - "domainName"
                     - "domain"
+                    - "zone"
 
             status:
               type: object
@@ -52,25 +50,22 @@ spec:
                 status:
                   type: string
 
-                serviceName:
-                  type: string
-
-                domainName:
-                  type: string
-
                 domain:
                   type: string
+
+                zone:
+                  type: string
+
+                selector:
+                  x-kubernetes-preserve-unknown-fields: true
+                  type: object
 
       subresources:
         status: { }
 
       additionalPrinterColumns:
-        - jsonPath: .spec.serviceName
-          name: ServiceName
-          type: string
-
-        - jsonPath: .spec.domainName
-          name: DomainName
+        - jsonPath: .spec.domain
+          name: Domain
           type: string
 
         - jsonPath: .metadata.creationTimestamp
@@ -82,14 +77,12 @@ spec:
           type: string
 
 ---
-
 apiVersion: v1
 kind: Namespace
 metadata:
   name: ddns-system
 
 ---
-
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -97,7 +90,6 @@ metadata:
   namespace: ddns-system
 
 ---
-
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -114,26 +106,19 @@ rules:
     resources:
       - services
 
-  - verbs:
-      - '*'
-
-    apiGroups:
-      - '*'
+  - verbs: [ '*' ]
+    apiGroups: [ '*' ]
 
     resources:
       - ddnss
 
-  - verbs:
-      - '*'
-
-    apiGroups:
-      - '*'
+  - verbs: [ '*' ]
+    apiGroups: [ '*' ]
 
     resources:
       - ddnss/status
 
 ---
-
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -150,7 +135,6 @@ roleRef:
   name: ddns-role
 
 ---
-
 apiVersion: v1
 kind: Secret
 metadata:
@@ -161,7 +145,6 @@ data:
   token: YOUR-BASE64-TOKEN
 
 ---
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -198,5 +181,8 @@ spec:
 
             - name: RUST_LOG
               value: info
+
+      #            - name: JAEGER_AGENT
+      #              value: jaeger
 
       serviceAccountName: ddns-controller
