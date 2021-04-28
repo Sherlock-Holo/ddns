@@ -170,7 +170,7 @@ spec:
 
           resources:
             limits:
-              memory: 256Mi
+              memory: 128Mi
 
           env:
             - name: CF_DNS_TOKEN

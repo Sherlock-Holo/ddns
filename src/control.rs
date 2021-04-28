@@ -4,16 +4,22 @@ use kube::api::ListParams;
 use kube::{Api, Client};
 use kube_runtime::controller::Context;
 use kube_runtime::Controller;
-use tracing::{error, info};
+use tracing::{error, info, instrument};
 
 use crate::cf_dns::CfDns;
 use crate::reconcile;
 use crate::reconcile::ContextData;
 use crate::spec::*;
 
+#[instrument]
 pub async fn run_controller() -> Result<()> {
     let client = Client::try_default().await?;
+
+    info!("init k8s client");
+
     let cf_dns = CfDns::new().await?;
+
+    info!("init cf dns client");
 
     let ctx = Context::new(ContextData {
         client: client.clone(),
@@ -25,12 +31,13 @@ pub async fn run_controller() -> Result<()> {
     Controller::new(ddns_api, ListParams::default())
         .run(reconcile::reconcile, reconcile::reconcile_failed, ctx)
         .for_each(|res| async move {
-            match res {
-                Ok(o) => info!("reconciled {:?}", o),
-                Err(e) => error!("reconcile failed: {}", e),
+            if let Err(err) = res {
+                error!(%err, "reconcile failed");
             }
         })
         .await;
 
-    Ok(())
+    error!("controller stop");
+
+    Err(anyhow::anyhow!("controller stop"))
 }

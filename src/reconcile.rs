@@ -85,10 +85,7 @@ pub fn reconcile_failed(err: &Error, _ctx: Context<ContextData>) -> ReconcilerAc
 
 #[instrument(err, skip(ctx))]
 async fn handle_delete(ddns: Ddns, ctx: Context<ContextData>) -> Result<ReconcilerAction, Error> {
-    let ContextData {
-        client: client_ref,
-        cf_dns,
-    } = ctx.get_ref();
+    let ContextData { client, cf_dns } = ctx.get_ref();
 
     let metadata: ObjectMeta = ddns.metadata;
     let name = metadata
@@ -119,7 +116,7 @@ async fn handle_delete(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcil
         }
     };
 
-    let ddns_api: Api<Ddns> = Api::namespaced(client_ref.clone(), &namespace);
+    let ddns_api: Api<Ddns> = Api::namespaced(client.clone(), &namespace);
 
     match ddns_api
         .patch_status(
@@ -190,10 +187,7 @@ async fn handle_delete(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcil
 
 #[instrument(err, skip(ddns, ctx))]
 async fn handle_apply(ddns: Ddns, ctx: Context<ContextData>) -> Result<ReconcilerAction, Error> {
-    let ContextData {
-        client: client_ref,
-        cf_dns,
-    } = ctx.get_ref();
+    let ContextData { client, cf_dns } = ctx.get_ref();
 
     let metadata: ObjectMeta = ddns.metadata;
     let name = metadata
@@ -218,8 +212,8 @@ async fn handle_apply(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcile
         info!(%name, ?spec, ?status, "remove old dns records");
     }
 
-    let ddns_api: Api<Ddns> = Api::namespaced(client_ref.clone(), &namespace);
-    let service_api: Api<Service> = Api::namespaced(client_ref.clone(), &namespace);
+    let ddns_api: Api<Ddns> = Api::namespaced(client.clone(), &namespace);
+    let service_api: Api<Service> = Api::namespaced(client.clone(), &namespace);
 
     let lb_ips = get_service_lb_ips(&service_api, &spec.selector).await?;
 
