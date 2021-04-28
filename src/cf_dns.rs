@@ -105,7 +105,7 @@ impl CfDns {
                 IpAddr::V4(ip) => CreateDnsRecord {
                     zone_identifier: &zone_id,
                     params: CreateDnsRecordParams {
-                        ttl: Some(1),
+                        ttl: Some(30),
                         priority: None,
                         proxied: None,
                         name,
@@ -116,7 +116,7 @@ impl CfDns {
                 IpAddr::V6(ip) => CreateDnsRecord {
                     zone_identifier: &zone_id,
                     params: CreateDnsRecordParams {
-                        ttl: Some(1),
+                        ttl: Some(30),
                         priority: None,
                         proxied: None,
                         name,
