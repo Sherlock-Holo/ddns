@@ -16,6 +16,8 @@ use cloudflare::framework::auth::Credentials;
 use cloudflare::framework::{Environment, HttpApiClientConfig};
 use tracing::{error, info, info_span, instrument, Instrument};
 
+const DEFAULT_TTL: Option<u32> = Some(120);
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum RecordKind {
     A,
@@ -105,7 +107,7 @@ impl CfDns {
                 IpAddr::V4(ip) => CreateDnsRecord {
                     zone_identifier: &zone_id,
                     params: CreateDnsRecordParams {
-                        ttl: Some(30),
+                        ttl: DEFAULT_TTL,
                         priority: None,
                         proxied: None,
                         name,
@@ -116,7 +118,7 @@ impl CfDns {
                 IpAddr::V6(ip) => CreateDnsRecord {
                     zone_identifier: &zone_id,
                     params: CreateDnsRecordParams {
-                        ttl: Some(30),
+                        ttl: DEFAULT_TTL,
                         priority: None,
                         proxied: None,
                         name,
@@ -193,7 +195,7 @@ impl CfDns {
             .filter(|dns_record| dns_record.name == name)
         {
             let delete_dns_req = DeleteDnsRecord {
-                zone_identifier: &zone_id,
+                zone_identifier: zone_id,
                 identifier: &dns_record.id,
             };
 
