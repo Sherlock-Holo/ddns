@@ -36,7 +36,7 @@ pub struct DdnsStatus {
 
 impl DdnsStatus {
     pub fn to_patch_status(&self) -> PatchStatus {
-        PatchStatus::from(self.clone())
+        self.clone().into()
     }
 }
 

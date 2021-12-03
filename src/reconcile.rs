@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use futures_util::{stream, StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Service;
-use kube::api::{ListParams, ObjectMeta, Patch, PatchParams};
+use kube::api::{ListParams, Patch, PatchParams};
 use kube::{Api, Client};
 use kube_runtime::controller::{Context, ReconcilerAction};
 use serde::Serialize;
@@ -87,7 +87,7 @@ pub fn reconcile_failed(err: &Error, _ctx: Context<ContextData>) -> ReconcilerAc
 async fn handle_delete(ddns: Ddns, ctx: Context<ContextData>) -> Result<ReconcilerAction, Error> {
     let ContextData { client, cf_dns } = ctx.get_ref();
 
-    let metadata: ObjectMeta = ddns.metadata;
+    let metadata = ddns.metadata;
     let name = metadata
         .name
         .ok_or_else(|| anyhow::anyhow!("ddns resource doesn't have name"))?;
@@ -95,8 +95,8 @@ async fn handle_delete(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcil
         .namespace
         .ok_or_else(|| anyhow::anyhow!("ddns resource doesn't have namespace field"))?;
 
-    let status: Option<DdnsStatus> = ddns.status;
-    let spec: DdnsSpec = ddns.spec;
+    let status = ddns.status;
+    let spec = ddns.spec;
     let finalizers = metadata.finalizers;
 
     info!(%name, ?status, ?spec, ?finalizers, "handle delete");
@@ -189,7 +189,7 @@ async fn handle_delete(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcil
 async fn handle_apply(ddns: Ddns, ctx: Context<ContextData>) -> Result<ReconcilerAction, Error> {
     let ContextData { client, cf_dns } = ctx.get_ref();
 
-    let metadata: ObjectMeta = ddns.metadata;
+    let metadata = ddns.metadata;
     let name = metadata
         .name
         .ok_or_else(|| anyhow::anyhow!("ddns resource doesn't have name"))?;
@@ -197,8 +197,8 @@ async fn handle_apply(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcile
         .namespace
         .ok_or_else(|| anyhow::anyhow!("ddns resource doesn't have namespace field"))?;
 
-    let status: Option<DdnsStatus> = ddns.status;
-    let spec: DdnsSpec = ddns.spec;
+    let status = ddns.status;
+    let spec = ddns.spec;
 
     info!(%name, ?status, ?spec, "handle apply");
 
@@ -326,7 +326,13 @@ async fn get_service_lb_ips(
                 })
                 .flatten()
                 .flat_map(|ingress| ingress.ip)
-                .map(|ip| ip.parse().map_err(|err| anyhow::Error::from(err).into()))
+                .map(|ip| {
+                    ip.parse().map_err(|err| {
+                        error!(addr_parse_err=%err, "parse load balancer ingress IP failed");
+
+                        anyhow::Error::from(err).into()
+                    })
+                })
                 .collect::<Result<Vec<_>, Error>>()?;
 
             svc_ips.append(&mut svc_status_list);

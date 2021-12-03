@@ -18,6 +18,7 @@ use tracing::{error, info, info_span, instrument, Instrument};
 
 const DEFAULT_TTL: Option<u32> = Some(120);
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum RecordKind {
     A,
@@ -326,6 +327,7 @@ fn create_credentials_from_token() -> Option<Credentials> {
 
 #[cfg(test)]
 mod tests {
+    use std::mem;
     use std::sync::Once;
 
     use super::*;
@@ -333,7 +335,11 @@ mod tests {
     fn init_tracing() {
         static TRACING_INIT: Once = Once::new();
 
-        TRACING_INIT.call_once(|| crate::trace::init_tracing().unwrap());
+        TRACING_INIT.call_once(|| {
+            let tracing_stop = crate::trace::init_tracing().unwrap();
+
+            mem::forget(tracing_stop);
+        });
     }
 
     #[tokio::test]

@@ -5,7 +5,7 @@ use opentelemetry::global;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Registry;
 
-pub fn init_tracing() -> Result<()> {
+pub fn init_tracing() -> Result<TracingStop> {
     global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
 
     let agent_addr = env::var("JAEGER_AGENT").unwrap_or_else(|_| "127.0.0.1:6831".to_string());
@@ -26,9 +26,15 @@ pub fn init_tracing() -> Result<()> {
 
     tracing::subscriber::set_global_default(subscriber)?;
 
-    Ok(())
+    Ok(TracingStop { _priv: () })
 }
 
-pub fn stop_tracing() {
-    global::shutdown_tracer_provider();
+pub struct TracingStop {
+    _priv: (),
+}
+
+impl Drop for TracingStop {
+    fn drop(&mut self) {
+        global::shutdown_tracer_provider();
+    }
 }
