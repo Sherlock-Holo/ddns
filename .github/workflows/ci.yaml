@@ -10,31 +10,16 @@ jobs:
       - uses: actions/checkout@v2
 
       - uses: actions-rs/toolchain@v1
+        name: install toolchain
         with:
           profile: default
           toolchain: nightly
           override: true
 
       - uses: actions-rs/cargo@v1
+        name: cargo check
         with:
           command: check
-
-  test:
-    name: Test Suite
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: default
-          toolchain: nightly
-          override: true
-
-      - uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -- --nocapture
 
   fmt:
     name: Rustfmt
@@ -43,12 +28,14 @@ jobs:
       - uses: actions/checkout@v2
 
       - uses: actions-rs/toolchain@v1
+        name: install toolchain
         with:
           profile: default
           toolchain: nightly
           override: true
 
       - uses: actions-rs/cargo@v1
+        name: cargo fmt
         with:
           command: fmt
           args: --all -- --check
@@ -60,15 +47,39 @@ jobs:
       - uses: actions/checkout@v2
 
       - uses: actions-rs/toolchain@v1
+        name: install toolchain
         with:
           profile: default
           toolchain: nightly
           override: true
 
       - uses: actions-rs/cargo@v1
+        name: cargo clippy
         with:
           command: clippy
           args: -- -D warnings
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        name: install toolchain
+        with:
+          profile: default
+          toolchain: nightly
+          override: true
+
+      - name: test
+        uses: actions-rs/cargo@v1
+        env:
+          TEST_ZONE: ${{ secrets.TEST_ZONE }}
+          CF_DNS_TOKEN: ${{ secrets.CF_DNS_TOKEN }}
+        with:
+          command: test
+          args: -- --nocapture
 
   build:
     name: build
