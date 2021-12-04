@@ -2,6 +2,7 @@ use std::env;
 
 use anyhow::Result;
 use opentelemetry::global;
+use opentelemetry::runtime::TokioCurrentThread;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Registry;
 
@@ -13,7 +14,7 @@ pub fn init_tracing() -> Result<TracingStop> {
     let tracer = opentelemetry_jaeger::new_pipeline()
         .with_service_name("ddns")
         .with_agent_endpoint(agent_addr)
-        .install_simple()?;
+        .install_batch(TokioCurrentThread)?;
 
     let stderr_subscriber = tracing_subscriber::fmt::layer().pretty().with_target(true);
     let env_filter = tracing_subscriber::filter::EnvFilter::from_default_env();
