@@ -717,8 +717,7 @@ dependencies = [
 [[package]]
 name = "kube"
 version = "0.64.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84dcc2f8ca3f2427a72acc31fa9538159f6b33a97002e315a3fcd5323cf51a2b"
+source = "git+https://github.com/Sherlock-Holo/kube-rs.git?branch=remove-current-span#b5ddcc5b71e87b233b4cfd68b1a48cf1bb323775"
 dependencies = [
  "k8s-openapi",
  "kube-client",
@@ -729,8 +728,7 @@ dependencies = [
 [[package]]
 name = "kube-client"
 version = "0.64.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8957106140aa24a76de3f7d005966f381b30a4cd6a9c003b3bba6828e9617535"
+source = "git+https://github.com/Sherlock-Holo/kube-rs.git?branch=remove-current-span#b5ddcc5b71e87b233b4cfd68b1a48cf1bb323775"
 dependencies = [
  "base64",
  "bytes",
@@ -764,8 +762,7 @@ dependencies = [
 [[package]]
 name = "kube-core"
 version = "0.64.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ec73e7d8e937dd055d962af06e635e262fdb6ed341c36ecf659d4fece0a8005"
+source = "git+https://github.com/Sherlock-Holo/kube-rs.git?branch=remove-current-span#b5ddcc5b71e87b233b4cfd68b1a48cf1bb323775"
 dependencies = [
  "chrono",
  "form_urlencoded",
@@ -781,8 +778,7 @@ dependencies = [
 [[package]]
 name = "kube-derive"
 version = "0.64.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6651bfae82bc23439da1099174b52bcbf68df065dc33317c912e3c5c5cea43c"
+source = "git+https://github.com/Sherlock-Holo/kube-rs.git?branch=remove-current-span#b5ddcc5b71e87b233b4cfd68b1a48cf1bb323775"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -794,8 +790,7 @@ dependencies = [
 [[package]]
 name = "kube-runtime"
 version = "0.64.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b090d3d7b43e2d60fa93ca51b19fe9f2e05a5252c97880fe834f8fa9f2de605"
+source = "git+https://github.com/Sherlock-Holo/kube-rs.git?branch=remove-current-span#b5ddcc5b71e87b233b4cfd68b1a48cf1bb323775"
 dependencies = [
  "dashmap",
  "derivative",
@@ -821,9 +816,9 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "libc"
-version = "0.2.108"
+version = "0.2.109"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8521a1b57e76b1ec69af7599e75e38e7b7fad6610f037db8c79b127201b5d119"
+checksum = "f98a04dce437184842841303488f70d0188c5f51437d2a834dc097eafa909a01"
 
 [[package]]
 name = "libflate"
@@ -1150,9 +1145,9 @@ checksum = "ed0cfbc8191465bed66e1718596ee0b0b35d5ee1f41c5df2189d0fe8bde535ba"
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.32"
+version = "1.0.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba508cc11742c0dc5c1659771673afbab7a0efab23aa17e854cbab0837ed0b43"
+checksum = "fb37d2df5df740e582f28f8560cf425f52bb267d872fe58358eadb554909f07a"
 dependencies = [
  "unicode-xid",
 ]
@@ -1309,9 +1304,9 @@ checksum = "7ef03e0a2b150c7a90d01faf6254c9c48a41e95fb2a8c2ac1c6f0d2b9aefc342"
 
 [[package]]
 name = "rustversion"
-version = "1.0.5"
+version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61b3909d758bb75c79f23d4736fac9433868679d3ad2ea7a61e3c25cfda9a088"
+checksum = "f2cc38e8fa666e2de3c4aba7edeb5ffc5246c1c2ed0e3d17e560aeeba736b23f"
 
 [[package]]
 name = "ryu"

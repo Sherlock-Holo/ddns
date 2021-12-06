@@ -11,8 +11,8 @@ license = "MIT"
 tokio = { version = "1", features = ["rt", "macros"] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-kube = { version = "0.64", features = ["derive"] }
-kube-runtime = "0.64"
+kube = { version = "0.64", features = ["derive"], git = "https://github.com/Sherlock-Holo/kube-rs.git", branch = "remove-current-span" }
+kube-runtime = { version = "0.64", git = "https://github.com/Sherlock-Holo/kube-rs.git", branch = "remove-current-span" }
 k8s-openapi = { version = "0.13", default-features = false, features = ["v1_22"] }
 schemars = "0.8"
 tracing = "0.1"
