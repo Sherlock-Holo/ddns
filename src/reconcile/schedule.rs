@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use futures_channel::mpsc;
 use futures_channel::mpsc::UnboundedSender;
-use futures_util::{stream, StreamExt, TryFuture, TryFutureExt, TryStream, TryStreamExt};
-use kube::runtime::controller::{Context as ReconcileContext, ReconcilerAction};
+use futures_util::{stream, TryFuture, TryFutureExt, TryStream, TryStreamExt};
+use kube::runtime::controller::{Context, ReconcilerAction};
 use kube::runtime::reflector::{ObjectRef, Store};
 use tokio::time::sleep;
 use tracing::{error, info, info_span, instrument, warn, Instrument};
@@ -15,7 +15,7 @@ use crate::spec::Ddns;
 pub async fn schedule<S, Reconcile, ErrPolicy, ReconcileFut, ErrPolicyFut, Ctx>(
     ddns_stream: S,
     store: Store<Ddns>,
-    ctx: ReconcileContext<Ctx>,
+    ctx: Context<Ctx>,
     mut reconcile: Reconcile,
     err_policy: ErrPolicy,
 ) -> Result<(), anyhow::Error>
@@ -23,11 +23,10 @@ where
     S: TryStream<Ok = ObjectRef<Ddns>>,
     S::Error: std::error::Error + Send + Sync + 'static,
     Ctx: Send + Sync + 'static,
-    Reconcile: FnMut(Ddns, ReconcileContext<Ctx>) -> ReconcileFut,
+    Reconcile: FnMut(Ddns, Context<Ctx>) -> ReconcileFut,
     ReconcileFut: TryFuture<Ok = ReconcilerAction> + Send + 'static,
     ReconcileFut::Error: std::error::Error,
-    ErrPolicy:
-        Fn(ReconcileFut::Error, ReconcileContext<Ctx>) -> ErrPolicyFut + Send + Sync + 'static,
+    ErrPolicy: Fn(ReconcileFut::Error, Context<Ctx>) -> ErrPolicyFut + Send + Sync + 'static,
     ErrPolicyFut: Future<Output = ReconcilerAction> + Send + 'static,
 {
     let err_policy = Arc::new(err_policy);
@@ -38,9 +37,15 @@ where
 
     futures_util::pin_mut!(ddns_stream);
 
-    while let Some(result) = ddns_stream.next().await {
-        handle_result(
-            result,
+    while let Some(obj_ref) = ddns_stream
+        .try_next()
+        .inspect_err(|err| {
+            error!(%err, "acquire ddns object reference from stream failed, exit now");
+        })
+        .await?
+    {
+        handle_event(
+            obj_ref,
             &store,
             ctx.clone(),
             &mut reconcile,
@@ -57,10 +62,10 @@ where
 }
 
 #[instrument(skip(store, ctx, reconcile, err_policy, re_reconcile_sender))]
-fn handle_result<E, Reconcile, ErrPolicy, ReconcileFut, ErrPolicyFut, Ctx>(
-    result: Result<ObjectRef<Ddns>, E>,
+fn handle_event<E, Reconcile, ErrPolicy, ReconcileFut, ErrPolicyFut, Ctx>(
+    obj_ref: ObjectRef<Ddns>,
     store: &Store<Ddns>,
-    ctx: ReconcileContext<Ctx>,
+    ctx: Context<Ctx>,
     reconcile: &mut Reconcile,
     err_policy: Arc<ErrPolicy>,
     re_reconcile_sender: UnboundedSender<Result<ObjectRef<Ddns>, E>>,
@@ -68,51 +73,40 @@ fn handle_result<E, Reconcile, ErrPolicy, ReconcileFut, ErrPolicyFut, Ctx>(
 where
     E: std::error::Error + Send + Sync + 'static,
     Ctx: Send + Sync + 'static,
-    Reconcile: FnMut(Ddns, ReconcileContext<Ctx>) -> ReconcileFut,
+    Reconcile: FnMut(Ddns, Context<Ctx>) -> ReconcileFut,
     ReconcileFut: TryFuture<Ok = ReconcilerAction> + Send + 'static,
     ReconcileFut::Error: std::error::Error,
-    ErrPolicy:
-        Fn(ReconcileFut::Error, ReconcileContext<Ctx>) -> ErrPolicyFut + Send + Sync + 'static,
+    ErrPolicy: Fn(ReconcileFut::Error, Context<Ctx>) -> ErrPolicyFut + Send + Sync + 'static,
     ErrPolicyFut: Future<Output = ReconcilerAction> + Send + 'static,
 {
-    let (obj_ref, ddns) = match result {
-        Err(err) => {
-            error!(%err, "acquire ddns object reference from stream failed, exit");
+    info!("start handle event");
 
-            return Err(err.into());
-        }
+    let store_get_span = info_span!("get ddns from store by object reference", %obj_ref);
 
-        Ok(obj_ref) => {
-            match info_span!("get ddns from store by object reference", %obj_ref)
-                .in_scope(|| store.get(&obj_ref))
-            {
-                None => {
-                    warn!(%obj_ref, "get ddns from store failed, ddns not found");
+    let ddns = match store_get_span.in_scope(|| store.get(&obj_ref)) {
+        None => {
+            warn!(%obj_ref, "get ddns from store failed, ddns not found");
 
-                    tokio::spawn(
-                        async move {
-                            info!("sleep 2 seconds");
+            tokio::spawn(
+                async move {
+                    info!("sleep 2 seconds");
 
-                            sleep(Duration::from_secs(2)).await;
+                    sleep(Duration::from_secs(2)).await;
 
-                            let _ = re_reconcile_sender.unbounded_send(Ok(obj_ref));
-                        }
-                        .instrument(info_span!("retry to acquire ddns object reference")),
-                    );
-
-                    return Ok(());
+                    let _ = re_reconcile_sender.unbounded_send(Ok(obj_ref));
                 }
+                .instrument(info_span!("retry to acquire ddns object reference")),
+            );
 
-                Some(ddns) => (obj_ref, ddns),
-            }
+            return Ok(());
         }
+
+        Some(ddns) => ddns,
     };
 
-    let fut = reconcile(ddns, ctx.clone());
-    let ctx = ctx;
-    let err_policy = err_policy;
+    info!(?ddns, "get ddns from store done");
 
-    let fut = fut.map_err(move |err| err_policy(err, ctx));
+    let fut = reconcile(ddns, ctx.clone()).map_err(move |err| err_policy(err, ctx));
 
     tokio::spawn(
         async move {
