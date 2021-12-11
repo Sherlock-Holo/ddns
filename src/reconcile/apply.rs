@@ -5,188 +5,19 @@ use std::time::Duration;
 use futures_util::{stream, StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Service;
 use kube::api::{ListParams, Patch, PatchParams};
-use kube::{Api, Client};
-use kube_runtime::controller::{Context, ReconcilerAction};
-use serde::Serialize;
-use thiserror::Error;
+use kube::runtime::controller::{Context, ReconcilerAction};
+use kube::Api;
 use tracing::{error, info, instrument, warn};
 
-use crate::cf_dns::{CfDns, RecordKind};
-use crate::spec::*;
-
-const FINALIZER: &str = "ddns.finalizer.api.sherlockholo.xyz";
-
-#[derive(Error, Debug)]
-#[error(transparent)]
-pub struct Error(anyhow::Error);
-
-impl From<anyhow::Error> for Error {
-    fn from(err: anyhow::Error) -> Self {
-        Self(err)
-    }
-}
-
-impl From<kube::Error> for Error {
-    fn from(err: kube::Error) -> Self {
-        Self(err.into())
-    }
-}
-
-pub struct ContextData {
-    pub client: Client,
-    pub cf_dns: CfDns,
-}
-
-#[derive(Debug, Serialize)]
-struct Finalizers {
-    finalizers: Vec<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct PatchFinalizers {
-    metadata: Finalizers,
-}
-
-impl From<Vec<String>> for PatchFinalizers {
-    fn from(finalizers: Vec<String>) -> Self {
-        Self {
-            metadata: Finalizers { finalizers },
-        }
-    }
-}
-
-impl From<String> for PatchFinalizers {
-    fn from(finalizer: String) -> Self {
-        Self {
-            metadata: Finalizers {
-                finalizers: vec![finalizer],
-            },
-        }
-    }
-}
-
-#[instrument(err, skip(ctx))]
-pub async fn reconcile(ddns: Ddns, ctx: Context<ContextData>) -> Result<ReconcilerAction, Error> {
-    if ddns.metadata.deletion_timestamp.is_some() {
-        return handle_delete(ddns, ctx).await;
-    }
-
-    handle_apply(ddns, ctx).await
-}
-
-#[instrument(skip(_ctx))]
-pub fn reconcile_failed(err: &Error, _ctx: Context<ContextData>) -> ReconcilerAction {
-    error!(%err, "reconcile failed");
-
-    ReconcilerAction {
-        requeue_after: Some(Duration::from_secs(3)),
-    }
-}
-
-#[instrument(err, skip(ctx))]
-async fn handle_delete(ddns: Ddns, ctx: Context<ContextData>) -> Result<ReconcilerAction, Error> {
-    let ContextData { client, cf_dns } = ctx.get_ref();
-
-    let metadata = ddns.metadata;
-    let name = metadata
-        .name
-        .ok_or_else(|| anyhow::anyhow!("ddns resource doesn't have name"))?;
-    let namespace = metadata
-        .namespace
-        .ok_or_else(|| anyhow::anyhow!("ddns resource doesn't have namespace field"))?;
-
-    let status = ddns.status;
-    let spec = ddns.spec;
-    let finalizers = metadata.finalizers;
-
-    info!(%name, ?status, ?spec, ?finalizers, "handle delete");
-
-    let patch_params = PatchParams::default();
-
-    let mut status = if let Some(mut status) = status {
-        status.status = "DELETING".to_string();
-
-        status
-    } else {
-        DdnsStatus {
-            status: "DELETING".to_string(),
-            selector: spec.selector,
-            domain: spec.domain,
-            zone: spec.zone,
-        }
-    };
-
-    let ddns_api: Api<Ddns> = Api::namespaced(client.clone(), &namespace);
-
-    match ddns_api
-        .patch_status(
-            &name,
-            &patch_params,
-            &Patch::Merge(status.to_patch_status()),
-        )
-        .await
-    {
-        Err(kube::Error::Api(err)) if err.code == 404 => {
-            info!(%name, ?status, ?finalizers, "resource has been deleted");
-
-            return Ok(ReconcilerAction {
-                requeue_after: None,
-            });
-        }
-
-        Err(err) => return Err(err.into()),
-
-        Ok(_) => {}
-    }
-
-    info!(%name, ?status, ?finalizers, "updated status to DELETING");
-
-    cf_dns
-        .remove_dns_records(&status.domain, &status.zone, RecordKind::A)
-        .await?;
-
-    info!(%name, ?status, ?finalizers, "remove dns records success");
-
-    status.status = "DELETED".to_string();
-
-    ddns_api
-        .patch_status(
-            &name,
-            &patch_params,
-            &Patch::Merge(status.to_patch_status()),
-        )
-        .await?;
-
-    info!(%name, ?status, "updated status to DELETED");
-
-    if let Some(mut finalizers) = finalizers {
-        if let Some(index) = finalizers
-            .iter()
-            .position(|finalizer| finalizer == FINALIZER)
-        {
-            finalizers.remove(index);
-
-            ddns_api
-                .patch(
-                    &name,
-                    &patch_params,
-                    &Patch::Merge(PatchFinalizers::from(finalizers)),
-                )
-                .await?;
-
-            info!(%name, ?status, "remove finalizer success");
-        }
-    }
-
-    info!(%name, ?status, "delete Ddns success");
-
-    Ok(ReconcilerAction {
-        requeue_after: None,
-    })
-}
+use crate::cf_dns::RecordKind;
+use crate::reconcile::{ContextData, Error, PatchFinalizers, FINALIZER};
+use crate::spec::Ddns;
 
 #[instrument(err, skip(ddns, ctx))]
-async fn handle_apply(ddns: Ddns, ctx: Context<ContextData>) -> Result<ReconcilerAction, Error> {
+pub async fn handle_apply(
+    ddns: Ddns,
+    ctx: Context<ContextData>,
+) -> Result<ReconcilerAction, Error> {
     let ContextData { client, cf_dns } = ctx.get_ref();
 
     let metadata = ddns.metadata;
@@ -295,7 +126,7 @@ async fn handle_apply(ddns: Ddns, ctx: Context<ContextData>) -> Result<Reconcile
     );
 
     Ok(ReconcilerAction {
-        requeue_after: Some(Duration::from_secs(30)),
+        requeue_after: None,
     })
 }
 

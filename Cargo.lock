@@ -281,14 +281,14 @@ checksum = "3ee2393c4a91429dffb4bedf19f4d6abf27d8a732c8ce4980305d782e5426d57"
 
 [[package]]
 name = "ddns"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "cloudflare",
+ "futures-channel",
  "futures-util",
  "k8s-openapi",
  "kube",
- "kube-runtime",
  "opentelemetry",
  "opentelemetry-jaeger",
  "schemars",
@@ -564,6 +564,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "http-range-header"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0bfe8eed0a9285ef776bb792479ea3834e8b94e13d615c2f66d03dd50a435a29"
+
+[[package]]
 name = "httparse"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -716,19 +722,22 @@ dependencies = [
 
 [[package]]
 name = "kube"
-version = "0.64.0"
-source = "git+https://github.com/Sherlock-Holo/kube-rs.git?branch=remove-current-span#b5ddcc5b71e87b233b4cfd68b1a48cf1bb323775"
+version = "0.65.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ec231e9ec9e84789f9eb414d1ac40ce6c90d0517fb272a335b4233f2e272b1e"
 dependencies = [
  "k8s-openapi",
  "kube-client",
  "kube-core",
  "kube-derive",
+ "kube-runtime",
 ]
 
 [[package]]
 name = "kube-client"
-version = "0.64.0"
-source = "git+https://github.com/Sherlock-Holo/kube-rs.git?branch=remove-current-span#b5ddcc5b71e87b233b4cfd68b1a48cf1bb323775"
+version = "0.65.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "95dddb1fcced906d79cdae530ff39079c2d3772b2d623088fdbebe610bfa8217"
 dependencies = [
  "base64",
  "bytes",
@@ -761,8 +770,9 @@ dependencies = [
 
 [[package]]
 name = "kube-core"
-version = "0.64.0"
-source = "git+https://github.com/Sherlock-Holo/kube-rs.git?branch=remove-current-span#b5ddcc5b71e87b233b4cfd68b1a48cf1bb323775"
+version = "0.65.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c52b6ab05d160691083430f6f431707a4e05b64903f2ffa0095ee5efde759117"
 dependencies = [
  "chrono",
  "form_urlencoded",
@@ -777,8 +787,9 @@ dependencies = [
 
 [[package]]
 name = "kube-derive"
-version = "0.64.0"
-source = "git+https://github.com/Sherlock-Holo/kube-rs.git?branch=remove-current-span#b5ddcc5b71e87b233b4cfd68b1a48cf1bb323775"
+version = "0.65.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b98ff3d647085c6c025083efad0435890867f4bea042fc62d408ab3aeb1cdf66"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -789,8 +800,9 @@ dependencies = [
 
 [[package]]
 name = "kube-runtime"
-version = "0.64.0"
-source = "git+https://github.com/Sherlock-Holo/kube-rs.git?branch=remove-current-span#b5ddcc5b71e87b233b4cfd68b1a48cf1bb323775"
+version = "0.65.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "406280d56304bc79b37af7f78e0d9719a4eebc3f46e5e79663154874b7696a48"
 dependencies = [
  "dashmap",
  "derivative",
@@ -1814,17 +1826,19 @@ dependencies = [
 
 [[package]]
 name = "tower-http"
-version = "0.1.2"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f70061b0592867f0a60e67a6e699da5fe000c88a360a5b92ebdba9d73b2238c"
+checksum = "39ee603d6e665ecc7e0f8d479eedb4626bd4726f0ee6119cee5b3a6bf184cac0"
 dependencies = [
  "base64",
+ "bitflags",
  "bytes",
  "futures-core",
  "futures-util",
  "http",
  "http-body",
- "pin-project",
+ "http-range-header",
+ "pin-project-lite",
  "tower-layer",
  "tower-service",
  "tracing",
