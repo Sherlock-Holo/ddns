@@ -9,7 +9,7 @@ mod trace;
 pub async fn run() -> Result<()> {
     let _stop_guard = trace::init_tracing()?;
 
-    control::run_controller().await?;
+    control::run_scheduler().await?;
 
     Ok(())
 }

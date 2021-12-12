@@ -1,18 +1,18 @@
 use anyhow::Result;
-use futures_util::StreamExt;
-use kube::api::ListParams;
-use kube::{Api, Client};
-use kube_runtime::controller::Context;
-use kube_runtime::Controller;
-use tracing::{error, info, instrument};
+use futures_util::TryStreamExt;
+use kube::runtime::controller::Context;
+use kube::runtime::reflector::store::Writer;
+use kube::runtime::reflector::ObjectRef;
+use kube::Client;
+use tracing::info;
 
 use crate::cf_dns::CfDns;
 use crate::reconcile;
+use crate::reconcile::reflect::reflect;
+use crate::reconcile::schedule::schedule;
 use crate::reconcile::ContextData;
-use crate::spec::*;
 
-#[instrument]
-pub async fn run_controller() -> Result<()> {
+pub async fn run_scheduler() -> Result<()> {
     let client = Client::try_default().await?;
 
     info!("init k8s client");
@@ -26,18 +26,19 @@ pub async fn run_controller() -> Result<()> {
         cf_dns,
     });
 
-    let ddns_api: Api<Ddns> = Api::all(client);
+    let writer = Writer::default();
+    let store = writer.as_reader();
 
-    Controller::new(ddns_api, ListParams::default())
-        .run(reconcile::reconcile, reconcile::reconcile_failed, ctx)
-        .for_each(|res| async move {
-            if let Err(err) = res {
-                error!(%err, "reconcile failed");
-            }
-        })
-        .await;
+    let ddns_stream = reflect(client, writer)?.map_ok(|ddns| ObjectRef::from_obj(&ddns));
 
-    error!("controller stop");
+    schedule(
+        ddns_stream,
+        store,
+        ctx,
+        reconcile::reconcile,
+        reconcile::async_reconcile_failed,
+    )
+    .await?;
 
-    Err(anyhow::anyhow!("controller stop"))
+    unreachable!()
 }
