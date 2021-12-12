@@ -1,3 +1,5 @@
+use std::future;
+
 use futures_util::{stream, Stream, StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Service;
 use kube::api::ListParams;
@@ -9,6 +11,7 @@ use crate::spec::Ddns;
 
 pub fn watch_ddns(api: Api<Ddns>) -> impl Stream<Item = Result<Event<Ddns>, Error>> {
     watcher(api, ListParams::default())
+        .try_filter(|event| future::ready(!matches!(event, Event::Deleted(_))))
 }
 
 pub fn watch_service(
