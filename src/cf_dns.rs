@@ -13,7 +13,10 @@ use cloudflare::endpoints::dns::{
 use cloudflare::endpoints::zone::{ListZones, ListZonesParams, Zone};
 use cloudflare::framework::async_api::{ApiClient, Client};
 use cloudflare::framework::auth::Credentials;
+use cloudflare::framework::response::ApiFailure;
 use cloudflare::framework::{Environment, HttpApiClientConfig};
+use futures_util::TryFutureExt;
+use http::StatusCode;
 use tracing::{error, info, info_span, instrument, Instrument};
 
 const DEFAULT_TTL: Option<u32> = Some(120);
@@ -154,7 +157,7 @@ impl CfDns {
     pub async fn remove_dns_records(&self, name: &str, zone: &str, kind: RecordKind) -> Result<()> {
         let zone_id = self.get_zone_id(zone).await?;
 
-        info!(name, zone, "zone id is {}", zone_id);
+        info!(name, zone, %zone_id, "get zone id done");
 
         self.remove_dns_record_with_zone_id(name, &zone_id, kind)
             .await?;
@@ -184,14 +187,29 @@ impl CfDns {
             },
         };
 
-        let list_dns_resp = self.client.request(&list_dns_req).await?;
+        info!(?list_dns_req, "create list dns request");
+
+        let list_dns_resp = self
+            .client
+            .request(&list_dns_req)
+            .inspect_err(|err| {
+                error!(?list_dns_req, %err, "list dns failed");
+            })
+            .await?;
+
+        info!(?list_dns_resp, "get dns list response done");
+
         if let Some(api_err) = list_dns_resp.errors.first() {
+            error!(%api_err, "list dns failed with response");
+
             return Err(anyhow::anyhow!("{}", api_err));
         }
 
-        let list_dns_resp: Vec<DnsRecord> = list_dns_resp.result;
+        let dns_list: Vec<DnsRecord> = list_dns_resp.result;
 
-        for dns_record in list_dns_resp
+        info!(?dns_list, "get dns list");
+
+        for dns_record in dns_list
             .into_iter()
             .filter(|dns_record| dns_record.name == name)
         {
@@ -200,8 +218,29 @@ impl CfDns {
                 identifier: &dns_record.id,
             };
 
-            let delete_dns_resp = self.client.request(&delete_dns_req).await?;
+            info!(?delete_dns_req, "create delete dns request");
+
+            let delete_dns_resp = match self.client.request(&delete_dns_req).await {
+                Err(ApiFailure::Error(status_code, _)) if status_code == StatusCode::NOT_FOUND => {
+                    info!(name, zone_id, "dns record has been removed");
+
+                    return Ok(());
+                }
+
+                Err(err) => {
+                    error!(?delete_dns_req, %err, "delete dns failed");
+
+                    return Err(err.into());
+                }
+
+                Ok(resp) => resp,
+            };
+
+            info!(?delete_dns_resp, "get delete dns response done");
+
             if let Some(api_err) = delete_dns_resp.errors.first() {
+                error!(%api_err, "delete dns failed with response");
+
                 return Err(anyhow::anyhow!("{}", api_err));
             }
         }
@@ -225,22 +264,34 @@ impl CfDns {
             },
         };
 
+        info!(?list_zones_req, "create list zones request");
+
         let list_zones_resp = self.client.request(&list_zones_req).await.map_err(|err| {
             error!(%err, get_zone_request = ?list_zones_req, "send get zone id request failed");
 
             err
         })?;
 
+        info!(?list_zones_resp, "get list zones response done");
+
         if let Some(api_err) = list_zones_resp.errors.first() {
+            error!(%api_err, "list zone failed with response");
+
             return Err(anyhow::anyhow!("api error {}", api_err));
         }
 
         let list_zones_resp: Vec<Zone> = list_zones_resp.result;
 
+        info!(?list_zones_resp, "list zones done");
+
         list_zones_resp
             .into_iter()
             .find_map(|zone_info| (zone_info.name == zone).then(|| zone_info.id))
-            .ok_or_else(|| anyhow::anyhow!("zone {} is not exist", zone))
+            .ok_or_else(|| {
+                error!(?zone, "zone is not exist");
+
+                anyhow::anyhow!("zone {} is not exist", zone)
+            })
     }
 
     #[instrument(err)]
