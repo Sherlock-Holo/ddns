@@ -9,6 +9,9 @@ pub enum Error {
 
     #[error("reconcile failed: {0}")]
     Other(#[from] anyhow::Error),
+
+    #[error("reconcile or delete task has been aborted")]
+    Aborted,
 }
 
 impl From<kube::Error> for Error {
