@@ -4,6 +4,7 @@ use kube::api::ListParams;
 use kube::runtime::watcher;
 use kube::runtime::watcher::{Error, Event};
 use kube::Api;
+use tracing::info;
 
 /// The Service Changing event
 #[derive(Debug)]
@@ -27,6 +28,8 @@ pub fn watch_service(api: Api<Service>) -> impl Stream<Item = Result<ServiceEven
                 _ => return future::ok(None),
             };
 
+            info!(?service_event, "get service change event");
+
             future::ok(Some(service_event))
         })
         // we only care about the load balance service
@@ -38,6 +41,10 @@ pub fn watch_service(api: Api<Service>) -> impl Stream<Item = Result<ServiceEven
                     .and_then(|spec| spec.type_.as_ref())
                     .map(|svc_type| svc_type == "LoadBalancer")
                     .unwrap_or(false);
+
+                if is_lb_svc {
+                    info!(?svc, "get load balancer service");
+                }
 
                 future::ready(is_lb_svc)
             }
@@ -52,6 +59,10 @@ pub fn watch_service(api: Api<Service>) -> impl Stream<Item = Result<ServiceEven
                     .as_ref()
                     .map(|labels| !labels.is_empty())
                     .unwrap_or(false);
+
+                if contain_labels {
+                    info!(?svc, "get labels contained load balancer service");
+                }
 
                 future::ready(contain_labels)
             }
