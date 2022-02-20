@@ -16,9 +16,9 @@ k8s-openapi = { version = "0.14", default-features = false, features = ["v1_23"]
 schemars = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-opentelemetry = "0.16"
-opentelemetry-jaeger = "0.15"
-opentelemetry = "0.16"
+tracing-opentelemetry = "0.17"
+opentelemetry = "0.17"
+opentelemetry-jaeger = "0.16"
 anyhow = "1.0"
 thiserror = "1.0"
 futures-util = "0.3"
