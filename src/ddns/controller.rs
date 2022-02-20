@@ -1,8 +1,9 @@
 use anyhow::Error;
 use futures_channel::mpsc;
 use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
-use futures_util::{stream, StreamExt, TryFutureExt, TryStreamExt};
+use futures_util::{stream, StreamExt, TryStreamExt};
 use kube::{Api, Client};
+use tap::TapFallible;
 use tracing::{error, info, info_span, Instrument};
 
 use crate::cf_dns::CfDns;
@@ -60,8 +61,8 @@ impl Controller {
 
         while let Some(ddns) = ddns_stream
             .try_next()
-            .inspect_err(|err| error!(%err, "get ddns from stream failed"))
-            .await?
+            .await
+            .tap_err(|err| error!(%err, "get ddns from stream failed"))?
         {
             info!(?ddns, "acquire ddns done");
 

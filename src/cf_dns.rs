@@ -15,8 +15,8 @@ use cloudflare::framework::async_api::{ApiClient, Client};
 use cloudflare::framework::auth::Credentials;
 use cloudflare::framework::response::ApiFailure;
 use cloudflare::framework::{Environment, HttpApiClientConfig};
-use futures_util::TryFutureExt;
 use http::StatusCode;
+use tap::TapFallible;
 use tracing::{error, info, info_span, instrument, Instrument};
 
 const DEFAULT_TTL: Option<u32> = Some(120);
@@ -189,13 +189,9 @@ impl CfDns {
 
         info!(?list_dns_req, "create list dns request");
 
-        let list_dns_resp = self
-            .client
-            .request(&list_dns_req)
-            .inspect_err(|err| {
-                error!(?list_dns_req, %err, "list dns failed");
-            })
-            .await?;
+        let list_dns_resp = self.client.request(&list_dns_req).await.tap_err(|err| {
+            error!(?list_dns_req, %err, "list dns failed");
+        })?;
 
         info!(?list_dns_resp, "get dns list response done");
 

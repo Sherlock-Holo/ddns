@@ -1,7 +1,8 @@
-use futures_util::{TryFutureExt, TryStreamExt};
+use futures_util::TryStreamExt;
 use itertools::Itertools;
 use kube::api::ListParams;
 use kube::{Api, Client, Error};
+use tap::TapFallible;
 use tracing::{error, info, info_span, Instrument};
 
 use crate::ddns::{ErrorPolicy, Reconcile};
@@ -38,13 +39,9 @@ where
         let service_change_stream = watch_service(svc_api);
         futures_util::pin_mut!(service_change_stream);
 
-        while let Some(service_event) = service_change_stream
-            .try_next()
-            .inspect_err(|err| {
-                error!(%err, "get service change stream failed");
-            })
-            .await?
-        {
+        while let Some(service_event) = service_change_stream.try_next().await.tap_err(|err| {
+            error!(%err, "get service change stream failed");
+        })? {
             info!(?service_event, "get service change event");
 
             let reconciler = self.reconciler.clone();
@@ -75,12 +72,9 @@ where
 
                     let list_params = ListParams::default().labels(&labels);
 
-                    let ddns_list = ddns_api
-                        .list(&list_params)
-                        .inspect_err(|err| {
-                            error!(%err, "list ddns failed");
-                        })
-                        .await?;
+                    let ddns_list = ddns_api.list(&list_params).await.tap_err(|err| {
+                        error!(%err, "list ddns failed");
+                    })?;
 
                     for ddns in ddns_list {
                         let reconciler = reconciler.clone();

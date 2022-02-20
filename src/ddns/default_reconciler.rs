@@ -3,11 +3,12 @@ use std::net::IpAddr;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use futures_util::{stream, StreamExt, TryFutureExt, TryStreamExt};
+use futures_util::{stream, StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::Service;
 use kube::api::{ListParams, Patch, PatchParams};
 use kube::{Api, Client};
 use serde::Serialize;
+use tap::TapFallible;
 use tracing::{error, info, instrument, warn};
 
 use crate::cf_dns::{CfDns, RecordKind};
@@ -282,8 +283,8 @@ impl Reconcile for DefaultReconciler {
                         &patch_params,
                         &Patch::Merge(PatchFinalizers::from(finalizers)),
                     )
-                    .inspect_err(|err| error!(%err, "remove finalizer failed"))
-                    .await?;
+                    .await
+                    .tap_err(|err| error!(%err, "remove finalizer failed"))?;
 
                 info!(%name, ?status, "remove finalizer success");
             }
