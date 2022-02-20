@@ -1,7 +1,7 @@
 use futures_util::TryStreamExt;
 use itertools::Itertools;
 use kube::api::ListParams;
-use kube::{Api, Client, Error};
+use kube::{Api, Client};
 use tap::TapFallible;
 use tracing::{error, info, info_span, Instrument};
 
@@ -30,7 +30,8 @@ where
     R: Reconcile + Clone + Send + Sync + 'static,
     E: ErrorPolicy<Error = R::Error> + Clone + Send + Sync + 'static,
 {
-    #[allow(unstable_name_collisions)] // remove it when we can use intersperse only with std lib
+    // TODO remove it when we can use intersperse only with std lib
+    #[allow(unstable_name_collisions)]
     pub async fn trigger_ddns_reconcile(self) -> Result<(), anyhow::Error> {
         info!("start trigger ddns reconcile");
 
@@ -44,62 +45,52 @@ where
         })? {
             info!(?service_event, "get service change event");
 
-            let reconciler = self.reconciler.clone();
-            let err_policy = self.err_policy.clone();
-
             let ddns_api = Api::<Ddns>::all(self.client.clone());
 
-            tokio::spawn(
-                async move {
-                    let svc = match service_event {
-                        ServiceEvent::Applied(svc) | ServiceEvent::Deleted(svc) => svc,
-                    };
+            let svc = match service_event {
+                ServiceEvent::Applied(svc) | ServiceEvent::Deleted(svc) => svc,
+            };
 
-                    let labels = svc
-                        .metadata
-                        .labels
-                        .expect("service_change_stream return empty labels service");
+            let labels = svc
+                .metadata
+                .labels
+                .expect("service_change_stream return empty labels service");
 
-                    info!(?labels, "get labels map");
+            info!(?labels, "get labels map");
 
-                    let labels = labels
-                        .into_iter()
-                        .map(|(key, value)| format!("{}={}", key, value))
-                        .intersperse(",".to_string())
-                        .collect::<String>();
+            let labels = labels
+                .into_iter()
+                .map(|(key, value)| format!("{}={}", key, value))
+                .intersperse(",".to_string())
+                .collect::<String>();
 
-                    info!(%labels, "get filter labels");
+            info!(%labels, "get filter labels");
 
-                    let list_params = ListParams::default().labels(&labels);
+            let list_params = ListParams::default().labels(&labels);
 
-                    let ddns_list = ddns_api.list(&list_params).await.tap_err(|err| {
-                        error!(%err, "list ddns failed");
-                    })?;
+            let ddns_list = ddns_api.list(&list_params).await.tap_err(|err| {
+                error!(%err, "list ddns failed");
+            })?;
 
-                    for ddns in ddns_list {
-                        let reconciler = reconciler.clone();
-                        let err_policy = err_policy.clone();
+            for ddns in ddns_list {
+                let reconciler = self.reconciler.clone();
+                let err_policy = self.err_policy.clone();
 
-                        tokio::spawn(
-                            async move {
-                                info!(?ddns, "start reconcile ddns");
+                tokio::spawn(
+                    async move {
+                        info!(?ddns, "start reconcile ddns");
 
-                                if let Err(err) = reconciler.reconcile_ddns(ddns.clone()).await {
-                                    error!(%err, ?ddns, "reconcile failed");
+                        if let Err(err) = reconciler.reconcile_ddns(ddns.clone()).await {
+                            error!(%err, ?ddns, "reconcile failed");
 
-                                    err_policy.error_policy(ddns.clone(), err).await;
+                            err_policy.error_policy(ddns.clone(), err).await;
 
-                                    info!(?ddns, "run error policy done");
-                                }
-                            }
-                            .instrument(info_span!("reconcile ddns")),
-                        );
+                            info!(?ddns, "run error policy done");
+                        }
                     }
-
-                    Ok::<_, Error>(())
-                }
-                .instrument(info_span!("trigger ddns reconcile")),
-            );
+                    .instrument(info_span!("reconcile ddns")),
+                );
+            }
         }
 
         error!("service change stream is dry, that should not happened");
