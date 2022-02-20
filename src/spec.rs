@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, CustomResource, PartialEq, JsonSchema, Default)]
 #[kube(
-    group = "api.sherlockholo.xyz",
+    group = "api.sherlockholo.io",
     version = "v1",
     kind = "Ddns",
     plural = "ddnss",

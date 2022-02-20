@@ -14,7 +14,7 @@ use crate::cf_dns::{CfDns, RecordKind};
 use crate::ddns::{Error, Reconcile};
 use crate::spec::{Ddns, DdnsStatus};
 
-const FINALIZER: &str = "ddns.finalizer.api.sherlockholo.xyz";
+const FINALIZER: &str = "ddns.finalizer.api.sherlockholo.io";
 
 #[derive(Debug, Serialize)]
 struct Finalizers {

@@ -1,4 +1,4 @@
-apiVersion: "api.sherlockholo.xyz/v1"
+apiVersion: "api.sherlockholo.io/v1"
 kind: Ddns
 metadata:
   name: example

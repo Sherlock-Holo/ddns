@@ -1,10 +1,10 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: ddnss.api.sherlockholo.xyz
+  name: ddnss.api.sherlockholo.io
 
 spec:
-  group: api.sherlockholo.xyz
+  group: api.sherlockholo.io
   names:
     kind: Ddns
     plural: ddnss
