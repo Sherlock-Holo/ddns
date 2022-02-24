@@ -21,10 +21,13 @@ opentelemetry = "0.17"
 opentelemetry-jaeger = "0.16"
 anyhow = "1.0"
 thiserror = "1.0"
-futures-util = "0.3"
+futures-util = { version = "0.3", features = ["channel", "sink"] }
 cloudflare = "0.9"
 futures-channel = "0.3"
 async-trait = "0.1"
 itertools = "0.10"
 http = "0.2"
 tap = "1"
+
+[dev-dependencies]
+chrono = "0.4"

@@ -10,15 +10,19 @@ use crate::cf_dns::CfDns;
 use crate::ddns::default_err_policy::DefaultErrPolicy;
 use crate::ddns::default_reconciler::DefaultReconciler;
 use crate::ddns::watch::watch_ddns;
-use crate::ddns::{DeDupReconciler, ErrorPolicy, Reconcile};
+use crate::ddns::Error as DdnsError;
+use crate::ddns::{ErrorPolicy, QueueReconciler, Reconcile};
 use crate::service::Trigger;
 use crate::spec::Ddns;
 
 pub struct Controller {
     client: Client,
-    reconciler: DeDupReconciler<DefaultReconciler>,
+    reconciler: QueueReconciler<DefaultReconciler, DdnsError>,
     err_policy: DefaultErrPolicy<UnboundedSender<Ddns>>,
-    trigger: Trigger<DeDupReconciler<DefaultReconciler>, DefaultErrPolicy<UnboundedSender<Ddns>>>,
+    trigger: Trigger<
+        QueueReconciler<DefaultReconciler, DdnsError>,
+        DefaultErrPolicy<UnboundedSender<Ddns>>,
+    >,
     retry_queue_receiver: UnboundedReceiver<Ddns>,
 }
 
@@ -26,19 +30,15 @@ impl Controller {
     pub fn new(client: Client, cf_dns: CfDns) -> Self {
         let (queue_sender, queue_receiver) = mpsc::unbounded();
 
-        let reconciler = DeDupReconciler::new(DefaultReconciler::new(client.clone(), cf_dns));
-        let default_err_policy = DefaultErrPolicy::new(queue_sender);
+        let reconciler = QueueReconciler::new(DefaultReconciler::new(client.clone(), cf_dns));
+        let err_policy = DefaultErrPolicy::new(queue_sender);
 
-        let trigger = Trigger::new(
-            client.clone(),
-            reconciler.clone(),
-            default_err_policy.clone(),
-        );
+        let trigger = Trigger::new(client.clone(), reconciler.clone(), err_policy.clone());
 
         Self {
             client,
             reconciler,
-            err_policy: default_err_policy,
+            err_policy,
             trigger,
             retry_queue_receiver: queue_receiver,
         }

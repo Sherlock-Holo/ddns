@@ -54,9 +54,6 @@ where
                     let _ = retry_queue.send(ddns).await;
                 });
             }
-
-            // aborted task no need do anything
-            Error::Aborted => {}
         }
     }
 }
